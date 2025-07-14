@@ -37,6 +37,12 @@
     th {
       background: #eee;
     }
+    table thead th {
+    position: sticky;
+    top: 0;
+    background: #eee; /* ヘッダー背景色をテーブルの背景と揃える */
+    z-index: 10;       /* ヘッダーが他の要素より上に表示されるように */
+    }
     .mono-left {
       font-family: monospace !important;
       text-align: left !important;
@@ -211,7 +217,7 @@
         link.href = `https://ejje.weblio.jp/content/${encodeURIComponent(word)}`;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = "Weblio";
+        link.textContent = "Check";
         link.className = "weblio-link";
         linkTd.appendChild(link);
         row.appendChild(linkTd);
