@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>英単語検索</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      background: #f9f9f9;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    label {
+      white-space: nowrap;
+    }
+    input[type="text"], input[type="number"] {
+      font-family: monospace;
+    }
+    input[type="number"] {
+      width: 3em;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.3rem 0.5rem;
+      text-align: center;
+    }
+    th {
+      background: #eee;
+    }
+    .mono-left {
+      font-family: monospace !important;
+      text-align: left !important;
+    }
+    button {
+      cursor: pointer;
+    }
+    a.weblio-link {
+      text-decoration: none;
+    }
+    #pagination {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    #status-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>英単語検索</h1>
+
+  <div class="form-group">
+    <label>使用できる文字：</label>
+    <input type="text" id="allowedChars" style="width: 300px;" value="ABCDEFGHIJKLMNOPQRSTUVWXYZ" />
+  </div>
+
+  <div class="form-group">
+    <label>含めるべき文字：</label>
+    <input type="text" id="mustIncludeChars" style="width: 300px;" value="" />
+    <label><input type="radio" name="includeMode" value="or" checked /> OR</label>
+    <label><input type="radio" name="includeMode" value="and" /> AND</label>
+  </div>
+
+  <div class="form-group">
+    <label>文字数（最小）：</label>
+    <input type="number" id="minLength" value="6" min="1" />
+    <label>最大：</label>
+    <input type="number" id="maxLength" value="99" min="1" />
+  </div>
+
+  <div class="form-group">
+    <label><input type="checkbox" id="noRepeats" /> 同じ文字を使わない(Heterogram)</label>
+  </div>
+
+  <div class="form-group">
+    <label><input type="checkbox" id="sortABC" /> ABC順にソート</label>
+    <label><input type="checkbox" id="sortLength" /> 長い順にソート</label>
+  </div>
+
+  <div class="form-group" style="gap: 1rem;">
+    <button onclick="runFilter()">検索</button>
+    <button onclick="copyWords()" id="copyBtn" disabled>単語リストをコピー</button>
+  </div>
+
+  <div id="status-container">
+    <p id="status">words.txt を読み込み中...</p>
+    <button onclick="showAllResults()" id="showAllBtn" style="display:none">全件一括表示(高負荷)</button>
+  </div>
+
+  <div id="pagination"></div>
+  <table id="resultTable"></table>
+
+  <script>
+    let wordList = [];
+    let filteredWords = [];
+    let currentPage = 1;
+    const itemsPerPage = 1000;
+    const alphabet = [..."abcdefghijklmnopqrstuvwxyz"];
+
+    fetch("words.txt")
+      .then((response) => response.text())
+      .then((text) => {
+        wordList = text
+          .split(/\r?\n/)
+          .map((w) => w.trim().toLowerCase())
+          .filter((w) => w.length > 0);
+        document.getElementById("status").textContent = `読み込み完了（${wordList.length}語）`;
+      })
+      .catch((err) => {
+        document.getElementById("status").textContent = `words.txt の読み込みに失敗しました`;
+        console.error(err);
+      });
+
+    function runFilter() {
+      const allowed = new Set(document.getElementById("allowedChars").value.toLowerCase());
+      const mustInclude = document.getElementById("mustIncludeChars").value.toLowerCase();
+      const includeMode = document.querySelector('input[name="includeMode"]:checked').value;
+      const noRepeats = document.getElementById("noRepeats").checked;
+      const minLen = parseInt(document.getElementById("minLength").value, 10);
+      const maxLen = parseInt(document.getElementById("maxLength").value, 10);
+      const sortABC = document.getElementById("sortABC").checked;
+      const sortLength = document.getElementById("sortLength").checked;
+
+      filteredWords = [...new Set(wordList)].filter((word) => {
+        if (word.length < minLen || word.length > maxLen) return false;
+        for (let c of word) if (!allowed.has(c)) return false;
+        if (mustInclude.length > 0) {
+          const chars = [...mustInclude];
+          if (includeMode === "or" && !chars.some(c => word.includes(c))) return false;
+          if (includeMode === "and" && !chars.every(c => word.includes(c))) return false;
+        }
+        if (noRepeats) {
+          const seen = new Set();
+          for (let c of word) {
+            if (seen.has(c)) return false;
+            seen.add(c);
+          }
+        }
+        return true;
+      });
+
+      if (sortLength) filteredWords.sort((a, b) => b.length - a.length);
+      else if (sortABC) filteredWords.sort();
+
+      currentPage = 1;
+      renderTablePage(currentPage);
+      document.getElementById("status").textContent = `${filteredWords.length} 件の単語が見つかりました(1000件ずつ表示中)`;
+      document.getElementById("copyBtn").disabled = filteredWords.length === 0;
+      document.getElementById("showAllBtn").style.display = filteredWords.length > itemsPerPage ? "inline-block" : "none";
+    }
+
+    function renderTablePage(page) {
+      const table = document.getElementById("resultTable");
+      table.innerHTML = "";
+      const start = (page - 1) * itemsPerPage;
+      const end = start + itemsPerPage;
+      const pageItems = filteredWords.slice(start, end);
+      renderTable(pageItems);
+      renderPagination();
+    }
+
+    function renderTable(words) {
+      const table = document.getElementById("resultTable");
+      table.innerHTML = "";
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      headRow.appendChild(Object.assign(document.createElement("th"), {textContent: "単語"}));
+      headRow.appendChild(Object.assign(document.createElement("th"), {textContent: "長さ"}));
+      for (let c of alphabet) {
+        headRow.appendChild(Object.assign(document.createElement("th"), {textContent: c.toUpperCase()}));
+      }
+      headRow.appendChild(Object.assign(document.createElement("th"), {textContent: "Weblio"}));
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (let word of words) {
+        const row = document.createElement("tr");
+        row.appendChild(Object.assign(document.createElement("td"), {
+          textContent: word,
+          className: "mono-left"
+        }));
+        row.appendChild(Object.assign(document.createElement("td"), {
+          textContent: word.length
+        }));
+        const freq = {};
+        for (let c of word) freq[c] = (freq[c] || 0) + 1;
+        for (let c of alphabet) {
+          row.appendChild(Object.assign(document.createElement("td"), {
+            textContent: freq[c] || "-"
+          }));
+        }
+        const linkTd = document.createElement("td");
+        const link = document.createElement("a");
+        link.href = `https://ejje.weblio.jp/content/${encodeURIComponent(word)}`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Weblio";
+        link.className = "weblio-link";
+        linkTd.appendChild(link);
+        row.appendChild(linkTd);
+        tbody.appendChild(row);
+      }
+      table.appendChild(tbody);
+    }
+
+    function renderPagination() {
+      const container = document.getElementById("pagination");
+      container.innerHTML = "";
+      const totalPages = Math.ceil(filteredWords.length / itemsPerPage);
+
+      const prev = document.createElement("button");
+      prev.textContent = "← 前へ";
+      prev.disabled = currentPage === 1;
+      prev.onclick = () => { currentPage--; renderTablePage(currentPage); };
+      container.appendChild(prev);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const pageBtn = document.createElement("button");
+        pageBtn.textContent = i;
+        if (i === currentPage) pageBtn.disabled = true;
+        pageBtn.onclick = () => { currentPage = i; renderTablePage(i); };
+        container.appendChild(pageBtn);
+      }
+
+      const next = document.createElement("button");
+      next.textContent = "次へ →";
+      next.disabled = currentPage === totalPages;
+      next.onclick = () => { currentPage++; renderTablePage(currentPage); };
+      container.appendChild(next);
+    }
+
+    function copyWords() {
+      if (filteredWords.length === 0) return;
+      navigator.clipboard.writeText(filteredWords.join("\n"))
+        .catch(() => alert("クリップボードへのコピーに失敗しました"));
+    }
+
+    function showAllResults() {
+      renderTable(filteredWords);
+      document.getElementById("pagination").innerHTML = "";
+    }
+  </script>
+</body>
+</html>
