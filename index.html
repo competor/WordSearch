@@ -1,6 +1,46 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+  <!-- Font Awesome for dark mode icon -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+  <style>
+    .dark-mode {
+      background: #222 !important;
+      color: #eee !important;
+    }
+    .dark-mode table th, .dark-mode table td {
+      border-color: #444 !important;
+      background: #333 !important;
+      color: #eee !important;
+    }
+    .dark-mode th {
+      background: #333 !important;
+    }
+    .dark-mode input, .dark-mode select, .dark-mode button {
+      background: #333 !important;
+      color: #eee !important;
+      border-color: #555 !important;
+    }
+    .dark-mode .weblio-link {
+      color: #8cf !important;
+    }
+    #darkModeToggle {
+      position: absolute;
+      top: 1.5rem;
+      right: 2rem;
+      font-size: 2rem;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: #888;
+      z-index: 100;
+      transition: color 0.2s;
+      padding: 0.2em 0.3em;
+    }
+    #darkModeToggle.active {
+      color: #ffe066;
+    }
+  </style>
   <meta charset="UTF-8" />
   <title>英単語検索</title>
   <style>
@@ -69,6 +109,7 @@
   </style>
 </head>
 <body>
+  <button id="darkModeToggle" title="ダークモード切替"><i class="fa-solid fa-moon"></i></button>
   <h1>英単語検索</h1>
 
   <div class="form-group">
@@ -81,6 +122,25 @@
     <input type="text" id="mustIncludeChars" style="width: 300px;" value="" />
     <label><input type="radio" name="includeMode" value="or" checked /> OR</label>
     <label><input type="radio" name="includeMode" value="and" /> AND</label>
+  </div>
+
+  <div class="form-group">
+      <label>先頭文字：</label>
+      <input type="text" id="prefix" style="width:400px;" value="" />
+      <label><input type="radio" name="prefixMode" value="match" checked /> 一致する</label>
+      <label><input type="radio" name="prefixMode" value="not" /> 一致しない (カンマで複数選択可)</label>
+ </div>
+  <div class="form-group">
+      <label>語中文字：</label>
+      <input type="text" id="substr" style="width: 400px;" value="" />
+      <label><input type="radio" name="substrMode" value="match" checked /> 含む</label>
+      <label><input type="radio" name="substrMode" value="not" /> 含まない (カンマで複数選択可)</label>
+ </div>
+  <div class="form-group">
+      <label>末尾文字：</label>
+      <input type="text" id="suffix" style="width: 400px;" value="ing,er,s,ed,est,ist,ian,y,ness,less,able,ion,al,ize" />
+      <label><input type="radio" name="suffixMode" value="match"  /> 一致する</label>
+      <label><input type="radio" name="suffixMode" value="not" checked /> 一致しない (カンマで複数選択可)</label>
   </div>
 
   <div class="form-group">
@@ -113,6 +173,26 @@
   <table id="resultTable"></table>
 
   <script>
+    // ダークモード切替
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    function setDarkMode(on) {
+      document.body.classList.toggle('dark-mode', on);
+      darkModeToggle.classList.toggle('active', on);
+      const icon = darkModeToggle.querySelector('i');
+      if (on) {
+        icon.classList.remove('fa-moon');
+        icon.classList.add('fa-sun');
+      } else {
+        icon.classList.remove('fa-sun');
+        icon.classList.add('fa-moon');
+      }
+    }
+    darkModeToggle.onclick = () => {
+      const isDark = document.body.classList.contains('dark-mode');
+      setDarkMode(!isDark);
+    };
+    // 初期状態（ライト）
+    setDarkMode(false);
     let wordList = [];
     let filteredWords = [];
     let currentPage = 1;
@@ -143,6 +223,16 @@
       const sortABC = document.getElementById("sortABC").checked;
       const sortLength = document.getElementById("sortLength").checked;
 
+      const prefixRaw = document.getElementById("prefix").value.toLowerCase();
+      const substrRaw = document.getElementById("substr").value.toLowerCase();
+      const suffixRaw = document.getElementById("suffix").value.toLowerCase();
+      const prefixMode = document.querySelector('input[name="prefixMode"]:checked').value;
+      const substrMode = document.querySelector('input[name="substrMode"]:checked').value;
+      const suffixMode = document.querySelector('input[name="suffixMode"]:checked').value;
+      const prefixList = prefixRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
+      const substrList = substrRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
+      const suffixList = suffixRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
+
       filteredWords = [...new Set(wordList)].filter((word) => {
         if (word.length < minLen || word.length > maxLen) return false;
         for (let c of word) if (!allowed.has(c)) return false;
@@ -157,6 +247,18 @@
             if (seen.has(c)) return false;
             seen.add(c);
           }
+        }
+        if (prefixList.length > 0) {
+          if (prefixMode === "match" && !prefixList.some(p => word.startsWith(p))) return false;
+          if (prefixMode === "not" && prefixList.some(p => word.startsWith(p))) return false;
+        }
+        if (substrList.length > 0) {
+          if (substrMode === "match" && !substrList.some(sub => word.includes(sub))) return false;
+          if (substrMode === "not" && substrList.some(sub => word.includes(sub))) return false;
+        }
+        if (suffixList.length > 0) {
+          if (suffixMode === "match" && !suffixList.some(s => word.endsWith(s))) return false;
+          if (suffixMode === "not" && suffixList.some(s => word.endsWith(s))) return false;
         }
         return true;
       });
